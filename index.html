@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>健身房會員與團課預約管理系統｜FitPulse Gym SQL Lab</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Inter"', '"Noto Sans TC"', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            pulse: {
+              50: '#eef6ff',
+              100: '#d9eaff',
+              200: '#bcdbff',
+              500: '#2563eb',
+              600: '#1d4ed8',
+              700: '#1e40af',
+              900: '#1e3a8a',
+            },
+            volt: {
+              50: '#fff7ed',
+              100: '#ffedd5',
+              500: '#f97316',
+              600: '#ea580c',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
+    code, pre, textarea.sql-editor { font-family: 'JetBrains Mono', 'Noto Sans TC', monospace; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased selection:bg-pulse-200 selection:text-pulse-900">
+
+  <!-- 頂部固定導覽列 -->
+  <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 py-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-pulse-600 to-indigo-800 text-white flex items-center justify-center shadow-sm text-xl" aria-hidden="true">
+            🏋️
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h1 class="text-base sm:text-lg font-bold text-slate-900">
+                健身房會員與團課預約管理系統
+              </h1>
+              <span class="text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-pulse-100 text-pulse-700 border border-pulse-200">
+                FitPulse SQL Lab
+              </span>
+            </div>
+            <p class="text-xs text-slate-500">Gym Membership & Group Class Booking SQL Practice · 瀏覽器端 SQLite 即時查詢</p>
+          </div>
+        </div>
+
+        <!-- SQL 引擎狀態指示燈 -->
+        <div id="db-status-badge" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+          <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse" id="db-status-dot"></span>
+          <span id="db-status-text">正在載入 SQLite WebAssembly 引擎...</span>
+        </div>
+      </div>
+
+      <!-- 區塊快速跳轉 -->
+      <nav class="flex items-center gap-1 sm:gap-2 overflow-x-auto pb-2.5 pt-1 text-xs sm:text-sm border-t border-slate-100" aria-label="主要區塊導覽">
+        <a href="#background" class="px-3 py-1.5 rounded-lg font-medium text-slate-600 hover:text-pulse-700 hover:bg-pulse-50 transition whitespace-nowrap">
+          1. 案例背景
+        </a>
+        <a href="#design" class="px-3 py-1.5 rounded-lg font-medium text-slate-600 hover:text-pulse-700 hover:bg-pulse-50 transition whitespace-nowrap">
+          2. 資料庫設計
+        </a>
+        <a href="#playground" class="px-3 py-1.5 rounded-lg font-medium text-slate-600 hover:text-pulse-700 hover:bg-pulse-50 transition whitespace-nowrap">
+          3. 查詢操作
+        </a>
+        <a href="#comparison" class="px-3 py-1.5 rounded-lg font-medium text-slate-600 hover:text-pulse-700 hover:bg-pulse-50 transition whitespace-nowrap">
+          4. 結果比較
+        </a>
+        <a href="#cheat-sheet" class="px-3 py-1.5 rounded-lg font-medium text-volt-600 hover:bg-volt-50 transition whitespace-nowrap">
+          🎤 口頭解釋重點小抄
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
+
+    <!-- 系統訊息提示條（取代 alert/confirm） -->
+    <div id="system-toast" class="hidden rounded-xl border px-4 py-3 text-sm flex items-center justify-between gap-3 transition" role="status">
+      <span id="system-toast-msg" class="font-medium"></span>
+      <button type="button" onclick="hideToast()" class="text-xs px-2.5 py-1 rounded-md hover:bg-black/5 font-semibold cursor-pointer">關閉</button>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- 1. 案例背景 (#background) -->
+    <!-- ===================================================================== -->
+    <section id="background" class="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 sm:p-8">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-100">
+        <div>
+          <span class="inline-block text-xs font-bold uppercase tracking-wider text-pulse-700 bg-pulse-100 px-2.5 py-1 rounded-md mb-2">
+            Section 01 · Case Background
+          </span>
+          <h2 class="text-2xl font-bold text-slate-900">案例背景：連鎖健身房會員與團課預約管理</h2>
+        </div>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <span class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 font-medium">情境場館：FitPulse 運動俱樂部</span>
+          <span class="px-3 py-1.5 rounded-lg bg-pulse-50 text-pulse-700 border border-pulse-200 font-medium">核心語法：JOIN · GROUP BY · HAVING · NULL 邏輯</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <!-- 給誰使用 -->
+        <div class="rounded-xl bg-slate-50 border border-slate-200/80 p-5 space-y-4">
+          <div class="flex items-center gap-2.5">
+            <span class="w-8 h-8 rounded-lg bg-pulse-600 text-white flex items-center justify-center font-bold text-sm">👥</span>
+            <h3 class="text-lg font-bold text-slate-900">這個資料庫給誰使用？</h3>
+          </div>
+          <div class="space-y-3 text-sm text-slate-700 leading-relaxed">
+            <div class="bg-white rounded-lg p-3.5 border border-slate-200/70">
+              <p class="font-semibold text-pulse-700">1. 連鎖健身房營運主管（Operations Manager）</p>
+              <p class="mt-1">負責審視各時段團體課程的實際滿班率、評估各專長教練（如瑜珈、飛輪、HIIT、重訓）的開課人氣與課程保留價值，作為下季課表調整與教練績效獎金的依據。</p>
+            </div>
+            <div class="bg-white rounded-lg p-3.5 border border-slate-200/70">
+              <p class="font-semibold text-pulse-700">2. 場館櫃檯行政與會籍顧問（Front Desk & Membership Staff）</p>
+              <p class="mt-1">管理有效（Active）與過期（Expired）會員會籍（年費/季費/單次），追蹤團課報到狀況，並針對「佔用名額卻屢次未到（No-Show）」的會員進行提醒或預約權限控管。</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 要解決什麼問題 -->
+        <div class="rounded-xl bg-pulse-50/50 border border-pulse-200/80 p-5 space-y-4">
+          <div class="flex items-center gap-2.5">
+            <span class="w-8 h-8 rounded-lg bg-indigo-700 text-white flex items-center justify-center font-bold text-sm">🎯</span>
+            <h3 class="text-lg font-bold text-slate-900">要解決什麼營運與資料問題？</h3>
+          </div>
+          <ul class="space-y-2.5 text-sm text-slate-700 leading-relaxed">
+            <li class="flex items-start gap-2.5 bg-white rounded-lg p-3 border border-pulse-100">
+              <span class="text-pulse-600 font-bold mt-0.5">▸</span>
+              <span><strong>團課真實滿班率追蹤：</strong>許多會員先搶位卻缺席（No-Show）或臨時取消（Cancelled），若未過濾狀態直接除以教室容量（<code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">max_capacity</code>），會嚴重高估教室使用率。</span>
+            </li>
+            <li class="flex items-start gap-2.5 bg-white rounded-lg p-3 border border-pulse-100">
+              <span class="text-pulse-600 font-bold mt-0.5">▸</span>
+              <span><strong>教練開課績效與新課評估：</strong>新開課程可能尚未有會員預約，必須透過 <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">LEFT JOIN</code> 與 <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">COUNT(欄位)</code> 準確算出「0 預約」而非被 <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">INNER JOIN</code> 漏掉或被 <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">COUNT(*)</code> 誤算成 1。</span>
+            </li>
+            <li class="flex items-start gap-2.5 bg-white rounded-lg p-3 border border-pulse-100">
+              <span class="text-pulse-600 font-bold mt-0.5">▸</span>
+              <span><strong>缺席黑名單與幽靈預約控管：</strong>利用反向查詢找出「有預約紀錄但從未實際出席」的會員名單，方便櫃檯電話關懷與釋出候補名額。</span>
+            </li>
+            <li class="flex items-start gap-2.5 bg-white rounded-lg p-3 border border-pulse-100">
+              <span class="text-pulse-600 font-bold mt-0.5">▸</span>
+              <span><strong>高價值年費會員盤點：</strong>篩選會籍仍有效（Active）且為年費制（Annual）的核心客群，依入會資歷規劃續約禮遇。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 2. 資料庫設計 (#design) -->
+    <!-- ===================================================================== -->
+    <section id="design" class="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-8">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-100">
+        <div>
+          <span class="inline-block text-xs font-bold uppercase tracking-wider text-pulse-700 bg-pulse-100 px-2.5 py-1 rounded-md mb-2">
+            Section 02 · Database Design
+          </span>
+          <h2 class="text-2xl font-bold text-slate-900">資料庫設計：ERD、欄位說明與樣本資料</h2>
+          <p class="text-sm text-slate-600 mt-1">以正規化關聯設計 4 張核心資料表：<code class="bg-slate-100 px-1.5 py-0.5 rounded">members</code>（會員）、<code class="bg-slate-100 px-1.5 py-0.5 rounded">trainers</code>（教練）、<code class="bg-slate-100 px-1.5 py-0.5 rounded">classes</code>（團體課程）、<code class="bg-slate-100 px-1.5 py-0.5 rounded">bookings</code>（預約紀錄）。</p>
+        </div>
+        <button
+          type="button"
+          onclick="resetDatabase()"
+          class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs transition cursor-pointer">
+          <span>🔄</span>
+          <span>重置資料庫 (Reset DB)</span>
+        </button>
+      </div>
+
+      <!-- 2A. 內嵌 SVG ERD 關聯圖 -->
+      <div>
+        <h3 class="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
+          <span>📐</span>
+          <span>實體關聯圖（Entity-Relationship Diagram, ERD）</span>
+        </h3>
+        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:p-5 overflow-x-auto">
+          <svg viewBox="0 0 980 440" class="w-full min-w-[740px] h-auto select-none" role="img" aria-label="健身房會員與團課預約資料庫 ERD 關聯圖">
+            <defs>
+              <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#1d4ed8" />
+              </marker>
+              <filter id="card-shadow" x="-5%" y="-5%" width="110%" height="115%">
+                <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.08" />
+              </filter>
+            </defs>
+
+            <!-- 關聯線 1: trainers (1) -> classes (N) -->
+            <path d="M 255 110 L 380 110" fill="none" stroke="#1d4ed8" stroke-width="2.2" marker-end="url(#arrow-blue)" />
+            <text x="264" y="101" font-size="12" font-weight="700" fill="#1d4ed8">1</text>
+            <text x="362" y="101" font-size="12" font-weight="700" fill="#1d4ed8">N</text>
+            <rect x="278" y="84" width="76" height="20" rx="5" fill="#d9eaff" stroke="#bcdbff" />
+            <text x="316" y="98" font-size="11" font-weight="600" fill="#1e40af" text-anchor="middle">指導開課</text>
+
+            <!-- 關聯線 2: classes (1) -> bookings (N) -->
+            <path d="M 510 226 L 510 264" fill="none" stroke="#1d4ed8" stroke-width="2.2" marker-end="url(#arrow-blue)" />
+            <text x="518" y="240" font-size="12" font-weight="700" fill="#1d4ed8">1</text>
+            <text x="518" y="258" font-size="12" font-weight="700" fill="#1d4ed8">N</text>
+            <rect x="528" y="234" width="76" height="20" rx="5" fill="#d9eaff" stroke="#bcdbff" />
+            <text x="566" y="248" font-size="11" font-weight="600" fill="#1e40af" text-anchor="middle">被預約</text>
+
+            <!-- 關聯線 3: members (1) -> bookings (N) -->
+            <path d="M 255 335 L 380 335" fill="none" stroke="#1d4ed8" stroke-width="2.2" marker-end="url(#arrow-blue)" />
+            <text x="264" y="326" font-size="12" font-weight="700" fill="#1d4ed8">1</text>
+            <text x="362" y="326" font-size="12" font-weight="700" fill="#1d4ed8">N</text>
+            <rect x="278" y="309" width="76" height="20" rx="5" fill="#d9eaff" stroke="#bcdbff" />
+            <text x="316" y="323" font-size="11" font-weight="600" fill="#1e40af" text-anchor="middle">會員預約</text>
+
+            <!-- Table 1: trainers (教練) -->
+            <g transform="translate(25, 25)" filter="url(#card-shadow)">
+              <rect width="230" height="176" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+              <path d="M 0 12 Q 0 0 12 0 L 218 0 Q 230 0 230 12 L 230 36 L 0 36 Z" fill="#1e40af" />
+              <text x="14" y="23" font-size="13" font-weight="700" fill="#ffffff">trainers（教練資料表）</text>
+              <text x="14" y="57" font-size="12" font-weight="700" fill="#b45309">🔑 trainer_id <tspan font-weight="400" fill="#64748b">PK</tspan></text>
+              <text x="14" y="81" font-size="12" fill="#1e293b">trainer_name <tspan font-size="11" fill="#64748b">(教練姓名)</tspan></text>
+              <text x="14" y="105" font-size="12" fill="#1e293b">specialty <tspan font-size="11" fill="#64748b">(專長領域)</tspan></text>
+              <text x="14" y="129" font-size="12" fill="#1e293b">certification <tspan font-size="11" fill="#64748b">(證照等級)</tspan></text>
+              <text x="14" y="153" font-size="12" fill="#1e293b">hire_date <tspan font-size="11" fill="#64748b">(到職日)</tspan></text>
+            </g>
+
+            <!-- Table 2: classes (團體課程) -->
+            <g transform="translate(385, 25)" filter="url(#card-shadow)">
+              <rect width="265" height="200" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+              <path d="M 0 12 Q 0 0 12 0 L 253 0 Q 265 0 265 12 L 265 36 L 0 36 Z" fill="#1d4ed8" />
+              <text x="14" y="23" font-size="13" font-weight="700" fill="#ffffff">classes（團體課程表）</text>
+              <text x="14" y="57" font-size="12" font-weight="700" fill="#b45309">🔑 class_id <tspan font-weight="400" fill="#64748b">PK</tspan></text>
+              <text x="14" y="81" font-size="12" font-weight="600" fill="#1d4ed8">🔗 trainer_id <tspan font-size="11" font-weight="400" fill="#1d4ed8">FK → trainers</tspan></text>
+              <text x="14" y="105" font-size="12" fill="#1e293b">class_name <tspan font-size="11" fill="#64748b">(課程名稱)</tspan></text>
+              <text x="14" y="129" font-size="12" fill="#1e293b">category <tspan font-size="11" fill="#64748b">(瑜珈/飛輪/HIIT/重訓)</tspan></text>
+              <text x="14" y="153" font-size="12" fill="#1e293b">schedule_time <tspan font-size="11" fill="#64748b">(上課時段)</tspan></text>
+              <text x="14" y="177" font-size="12" fill="#1e293b">max_capacity <tspan font-size="11" fill="#64748b">(教室滿班人數上限)</tspan></text>
+            </g>
+
+            <!-- Table 3: members (會員) -->
+            <g transform="translate(25, 235)" filter="url(#card-shadow)">
+              <rect width="230" height="186" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+              <path d="M 0 12 Q 0 0 12 0 L 218 0 Q 230 0 230 12 L 230 36 L 0 36 Z" fill="#2563eb" />
+              <text x="14" y="23" font-size="13" font-weight="700" fill="#ffffff">members（會員資料表）</text>
+              <text x="14" y="57" font-size="12" font-weight="700" fill="#b45309">🔑 member_id <tspan font-weight="400" fill="#64748b">PK</tspan></text>
+              <text x="14" y="81" font-size="12" fill="#1e293b">full_name <tspan font-size="11" fill="#64748b">(會員姓名)</tspan></text>
+              <text x="14" y="105" font-size="12" fill="#1e293b">gender <tspan font-size="11" fill="#64748b">(性別 M/F)</tspan></text>
+              <text x="14" y="129" font-size="12" fill="#1e293b">membership_type <tspan font-size="11" fill="#64748b">(Annual/Quarterly/DropIn)</tspan></text>
+              <text x="14" y="153" font-size="12" fill="#1e293b">join_date <tspan font-size="11" fill="#64748b">(入會日期)</tspan></text>
+              <text x="14" y="175" font-size="12" fill="#1e293b">status <tspan font-size="11" fill="#64748b">(Active / Expired)</tspan></text>
+            </g>
+
+            <!-- Table 4: bookings (預約紀錄) -->
+            <g transform="translate(385, 268)" filter="url(#card-shadow)">
+              <rect width="265" height="154" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+              <path d="M 0 12 Q 0 0 12 0 L 253 0 Q 265 0 265 12 L 265 36 L 0 36 Z" fill="#1e3a8a" />
+              <text x="14" y="23" font-size="13" font-weight="700" fill="#ffffff">bookings（團課預約紀錄表）</text>
+              <text x="14" y="57" font-size="12" font-weight="700" fill="#b45309">🔑 booking_id <tspan font-weight="400" fill="#64748b">PK</tspan></text>
+              <text x="14" y="81" font-size="12" font-weight="600" fill="#1d4ed8">🔗 member_id <tspan font-size="11" font-weight="400" fill="#1d4ed8">FK → members</tspan></text>
+              <text x="14" y="105" font-size="12" font-weight="600" fill="#1d4ed8">🔗 class_id <tspan font-size="11" font-weight="400" fill="#1d4ed8">FK → classes</tspan></text>
+              <text x="14" y="129" font-size="12" fill="#1e293b">booking_date <tspan font-size="11" fill="#64748b">(預約登記日)</tspan></text>
+              <text x="14" y="148" font-size="12" fill="#1e293b">status <tspan font-size="11" fill="#64748b">(Attended / No-Show / Cancelled)</tspan></text>
+            </g>
+
+            <!-- 圖例說明卡 -->
+            <g transform="translate(690, 25)">
+              <rect width="260" height="200" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" />
+              <text x="16" y="28" font-size="13" font-weight="700" fill="#0f172a">關聯結構與設計邏輯</text>
+              <text x="16" y="55" font-size="12" font-weight="700" fill="#b45309">🔑 PK：主鍵（Primary Key）</text>
+              <text x="16" y="80" font-size="12" font-weight="600" fill="#1d4ed8">🔗 FK：外鍵（Foreign Key）</text>
+              <line x1="16" y1="104" x2="54" y2="104" stroke="#1d4ed8" stroke-width="2.2" marker-end="url(#arrow-blue)" />
+              <text x="64" y="108" font-size="12" fill="#334155">1 對 N 關聯方向</text>
+              <text x="16" y="135" font-size="11" fill="#475569">• 會員與課程透過 bookings</text>
+              <text x="24" y="152" font-size="11" fill="#475569">拆解為「多對多」關聯</text>
+              <text x="16" y="174" font-size="11" fill="#475569">• 內含「尚無預約的新課程」與</text>
+              <text x="24" y="191" font-size="11" fill="#475569">「零出席會員」可供測試</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 2B. 欄位說明 -->
+      <div>
+        <h3 class="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
+          <span>📋</span>
+          <span>欄位說明（Column Specifications）</span>
+        </h3>
+        <div class="overflow-x-auto rounded-xl border border-slate-200">
+          <table class="min-w-full text-left text-sm divide-y divide-slate-200">
+            <thead class="bg-slate-100 text-slate-700 text-xs uppercase tracking-wider">
+              <tr>
+                <th class="px-4 py-3 font-bold">資料表</th>
+                <th class="px-4 py-3 font-bold">欄位名稱</th>
+                <th class="px-4 py-3 font-bold">資料型態</th>
+                <th class="px-4 py-3 font-bold">鍵值/約束</th>
+                <th class="px-4 py-3 font-bold">說明</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 bg-white text-slate-700">
+              <!-- members -->
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">members</td>
+                <td class="px-4 py-2.5 font-mono">member_id</td>
+                <td class="px-4 py-2.5 font-mono text-xs">INTEGER</td>
+                <td class="px-4 py-2.5"><span class="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800 font-semibold">PK</span></td>
+                <td class="px-4 py-2.5">會員唯一編號</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">members</td>
+                <td class="px-4 py-2.5 font-mono">full_name</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">NOT NULL</td>
+                <td class="px-4 py-2.5">會員姓名</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">members</td>
+                <td class="px-4 py-2.5 font-mono">gender</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">M / F</td>
+                <td class="px-4 py-2.5">生理性別</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">members</td>
+                <td class="px-4 py-2.5 font-mono">membership_type</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">NOT NULL</td>
+                <td class="px-4 py-2.5">會籍方案（Annual=年費, Quarterly=季費, DropIn=單次票）</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">members</td>
+                <td class="px-4 py-2.5 font-mono">join_date</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">YYYY-MM-DD</td>
+                <td class="px-4 py-2.5">入會日期</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">members</td>
+                <td class="px-4 py-2.5 font-mono">status</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">Active / Expired</td>
+                <td class="px-4 py-2.5">會籍目前狀態（有效 / 已過期）</td>
+              </tr>
+
+              <!-- trainers -->
+              <tr class="bg-slate-50/50">
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">trainers</td>
+                <td class="px-4 py-2.5 font-mono">trainer_id</td>
+                <td class="px-4 py-2.5 font-mono text-xs">INTEGER</td>
+                <td class="px-4 py-2.5"><span class="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800 font-semibold">PK</span></td>
+                <td class="px-4 py-2.5">教練唯一編號</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">trainers</td>
+                <td class="px-4 py-2.5 font-mono">trainer_name</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">NOT NULL</td>
+                <td class="px-4 py-2.5">教練姓名</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">trainers</td>
+                <td class="px-4 py-2.5 font-mono">specialty</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">NOT NULL</td>
+                <td class="px-4 py-2.5">教學專長（如：瑜珈、飛輪、HIIT高強度間歇、肌力訓練）</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">trainers</td>
+                <td class="px-4 py-2.5 font-mono">certification</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">NOT NULL</td>
+                <td class="px-4 py-2.5">專業國際證照（如：ACE-CPT、RYT-200、NASM）</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">trainers</td>
+                <td class="px-4 py-2.5 font-mono">hire_date</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">YYYY-MM-DD</td>
+                <td class="px-4 py-2.5">教練到職日期</td>
+              </tr>
+
+              <!-- classes -->
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">classes</td>
+                <td class="px-4 py-2.5 font-mono">class_id</td>
+                <td class="px-4 py-2.5 font-mono text-xs">INTEGER</td>
+                <td class="px-4 py-2.5"><span class="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800 font-semibold">PK</span></td>
+                <td class="px-4 py-2.5">團體課程唯一編號</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">classes</td>
+                <td class="px-4 py-2.5 font-mono">trainer_id</td>
+                <td class="px-4 py-2.5 font-mono text-xs">INTEGER</td>
+                <td class="px-4 py-2.5"><span class="px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-semibold">FK</span> <span class="text-xs text-slate-500">→ trainers</span></td>
+                <td class="px-4 py-2.5">授課教練編號</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">classes</td>
+                <td class="px-4 py-2.5 font-mono">class_name</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">NOT NULL</td>
+                <td class="px-4 py-2.5">團體課程名稱（如：燃脂飛輪派對、流動瑜珈）</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">classes</td>
+                <td class="px-4 py-2.5 font-mono">category</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">NOT NULL</td>
+                <td class="px-4 py-2.5">課程分類（Yoga / Cycling / HIIT / Strength）</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">classes</td>
+                <td class="px-4 py-2.5 font-mono">schedule_time</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">NOT NULL</td>
+                <td class="px-4 py-2.5">每週上課時段（如：週一 19:00）</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">classes</td>
+                <td class="px-4 py-2.5 font-mono">max_capacity</td>
+                <td class="px-4 py-2.5 font-mono text-xs">INTEGER</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">&gt; 0</td>
+                <td class="px-4 py-2.5">該教室最大容納人數（計算滿班率之分母）</td>
+              </tr>
+
+              <!-- bookings -->
+              <tr class="bg-slate-50/50">
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">bookings</td>
+                <td class="px-4 py-2.5 font-mono">booking_id</td>
+                <td class="px-4 py-2.5 font-mono text-xs">INTEGER</td>
+                <td class="px-4 py-2.5"><span class="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-800 font-semibold">PK</span></td>
+                <td class="px-4 py-2.5">預約流水編號</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">bookings</td>
+                <td class="px-4 py-2.5 font-mono">member_id</td>
+                <td class="px-4 py-2.5 font-mono text-xs">INTEGER</td>
+                <td class="px-4 py-2.5"><span class="px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-semibold">FK</span> <span class="text-xs text-slate-500">→ members</span></td>
+                <td class="px-4 py-2.5">預約會員編號</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">bookings</td>
+                <td class="px-4 py-2.5 font-mono">class_id</td>
+                <td class="px-4 py-2.5 font-mono text-xs">INTEGER</td>
+                <td class="px-4 py-2.5"><span class="px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-semibold">FK</span> <span class="text-xs text-slate-500">→ classes</span></td>
+                <td class="px-4 py-2.5">預約課程編號</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">bookings</td>
+                <td class="px-4 py-2.5 font-mono">booking_date</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">YYYY-MM-DD</td>
+                <td class="px-4 py-2.5">會員送出預約的日期</td>
+              </tr>
+              <tr class="bg-slate-50/50">
+                <td class="px-4 py-2.5 font-mono font-semibold text-pulse-700">bookings</td>
+                <td class="px-4 py-2.5 font-mono">status</td>
+                <td class="px-4 py-2.5 font-mono text-xs">TEXT</td>
+                <td class="px-4 py-2.5 text-xs text-slate-500">NOT NULL</td>
+                <td class="px-4 py-2.5">報到狀態（Attended=實際出席, No-Show=無故缺席, Cancelled=事先取消）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 2C. 樣本資料切換檢視 -->
+      <div>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+          <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <span>🗃️</span>
+            <span>樣本資料檢視（Sample Data Preview）</span>
+          </h3>
+          <div class="flex flex-wrap gap-2" id="sample-table-tabs" role="tablist" aria-label="切換樣本資料表">
+            <button type="button" data-table="members" onclick="switchSampleTable('members')" class="sample-tab px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-pulse-600 text-white shadow-2xs transition cursor-pointer">
+              members（會員 · 8筆）
+            </button>
+            <button type="button" data-table="trainers" onclick="switchSampleTable('trainers')" class="sample-tab px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer">
+              trainers（教練 · 4筆）
+            </button>
+            <button type="button" data-table="classes" onclick="switchSampleTable('classes')" class="sample-tab px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer">
+              classes（團課 · 5筆）
+            </button>
+            <button type="button" data-table="bookings" onclick="switchSampleTable('bookings')" class="sample-tab px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer">
+              bookings（預約 · 14筆）
+            </button>
+          </div>
+        </div>
+        <div id="sample-data-container" class="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <!-- 動態渲染目前資料庫中的真實資料列 -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 3. 查詢操作 (#playground) -->
+    <!-- ===================================================================== -->
+    <section id="playground" class="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-5 border-b border-slate-100">
+        <div>
+          <span class="inline-block text-xs font-bold uppercase tracking-wider text-pulse-700 bg-pulse-100 px-2.5 py-1 rounded-md mb-2">
+            Section 03 · Interactive SQL Query Playground
+          </span>
+          <h2 class="text-2xl font-bold text-slate-900">查詢操作：互動式 SQL 練習場</h2>
+          <p class="text-sm text-slate-600 mt-1">點選下方題目載入 SQL、自由修改並執行，系統將即時顯示查詢耗時、資料筆數、錯誤訊息及預期結果比對。</p>
+        </div>
+        <div id="query-match-badge" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 self-start md:self-auto">
+          <span>準備就緒</span>
+        </div>
+      </div>
+
+      <!-- 4 題選擇卡片 -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" id="question-selector">
+        <!-- 動態渲染題目 1 ~ 題目 4 -->
+      </div>
+
+      <!-- 題目說明與預期結果說明 -->
+      <div class="rounded-xl bg-slate-50 border border-slate-200 p-5 space-y-3">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="q-badge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-pulse-600 text-white">題目 1</span>
+              <span id="q-tag" class="text-xs font-semibold px-2 py-0.5 rounded bg-pulse-100 text-pulse-800"></span>
+              <h3 id="q-title" class="text-lg font-bold text-slate-900"></h3>
+            </div>
+            <p id="q-desc" class="text-sm text-slate-700 leading-relaxed"></p>
+            <div class="rounded-lg bg-white border border-slate-200/90 p-3 text-xs text-slate-600 space-y-1">
+              <p><strong class="text-slate-800">📌 預期結果說明：</strong><span id="q-expected-note"></span></p>
+              <p class="text-pulse-700 font-medium" id="q-hint"></p>
+            </div>
+          </div>
+          <div class="shrink-0">
+            <button
+              type="button"
+              onclick="loadReferenceSql()"
+              class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-pulse-600 hover:bg-pulse-700 text-white shadow-2xs transition cursor-pointer">
+              <span>📥</span>
+              <span>載入此題 SQL</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SQL 編輯器與控制列 -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <label for="sql-editor" class="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <span>⌨️</span>
+            <span>SQL 查詢編輯器（可直接修改語法測試）</span>
+          </label>
+          <span class="text-xs text-slate-500">快捷鍵：<kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-[11px]">Ctrl</kbd> + <kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-[11px]">Enter</kbd> 執行查詢</span>
+        </div>
+
+        <textarea
+          id="sql-editor"
+          rows="8"
+          spellcheck="false"
+          class="sql-editor w-full rounded-xl bg-slate-900 text-slate-100 p-4 text-sm leading-relaxed border border-slate-700 focus:outline-none focus:ring-2 focus:ring-pulse-500 resize-y"
+          placeholder="在此輸入 SQL 語法..."></textarea>
+
+        <div class="flex flex-wrap items-center gap-2.5 pt-1">
+          <button
+            type="button"
+            onclick="runCurrentSql()"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-pulse-600 hover:bg-pulse-700 text-white shadow-sm transition cursor-pointer">
+            <span>▶</span>
+            <span>執行 SQL</span>
+          </button>
+          <button
+            type="button"
+            onclick="loadReferenceSql()"
+            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition cursor-pointer">
+            <span>↩️</span>
+            <span>還原此題預設 SQL</span>
+          </button>
+          <button
+            type="button"
+            onclick="resetDatabase()"
+            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 transition cursor-pointer">
+            <span>🔄</span>
+            <span>重置資料庫 (Reset DB)</span>
+          </button>
+          <button
+            type="button"
+            onclick="clearSqlEditor()"
+            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 transition cursor-pointer">
+            <span>🧹</span>
+            <span>清空編輯器</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- SQL 錯誤訊息框 -->
+      <div id="sql-error-box" class="hidden rounded-xl bg-rose-50 border border-rose-300 p-4 text-rose-900 text-sm space-y-1">
+        <div class="font-bold flex items-center gap-2">
+          <span>⚠️</span>
+          <span>SQL 語法或執行錯誤訊息（SQLite Error）</span>
+        </div>
+        <pre id="sql-error-text" class="font-mono text-xs whitespace-pre-wrap text-rose-800 pt-1"></pre>
+      </div>
+
+      <!-- 實際查詢結果 vs 預期結果 -->
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 pt-2">
+        <!-- 實際查詢結果 -->
+        <div class="rounded-xl border border-slate-200 overflow-hidden bg-white">
+          <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between gap-2">
+            <span class="text-sm font-bold">📊 實際查詢結果（Actual Result）</span>
+            <div class="flex items-center gap-2 text-xs font-mono">
+              <span id="exec-time-badge" class="px-2 py-0.5 rounded bg-slate-800 text-sky-300">0.0 ms</span>
+              <span id="actual-row-count" class="text-emerald-300">0 rows</span>
+            </div>
+          </div>
+          <div id="actual-result-container" class="p-4 overflow-x-auto min-h-[150px] text-sm">
+            <p class="text-slate-400 text-xs">點擊「執行 SQL」即可查看查詢結果。</p>
+          </div>
+        </div>
+
+        <!-- 預期結果 -->
+        <div class="rounded-xl border border-pulse-200 overflow-hidden bg-pulse-50/30">
+          <div class="px-4 py-3 bg-pulse-700 text-white flex items-center justify-between gap-2">
+            <span class="text-sm font-bold">✅ 預期輸出預覽（Expected Result）</span>
+            <span id="expected-row-count" class="text-xs font-mono text-pulse-100">0 rows</span>
+          </div>
+          <div id="expected-result-container" class="p-4 overflow-x-auto min-h-[150px] text-sm">
+            <!-- 動態渲染預期結果 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 4. 結果比較 (#comparison) -->
+    <!-- ===================================================================== -->
+    <section id="comparison" class="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6">
+      <div class="pb-5 border-b border-slate-100">
+        <span class="inline-block text-xs font-bold uppercase tracking-wider text-pulse-700 bg-pulse-100 px-2.5 py-1 rounded-md mb-2">
+          Section 04 · Result Comparison (Before vs After)
+        </span>
+        <h2 class="text-2xl font-bold text-slate-900">結果比較：修改 SQL 前後差異與原因解析</h2>
+        <p class="text-sm text-slate-600 mt-1">針對同一業務問題，對比修改 SQL 前後的輸出結果變化與底層執行原理，可隨時點擊按鈕將任一版本載入上方執行區實測。</p>
+      </div>
+
+      <div id="comparison-cases-container" class="space-y-8">
+        <!-- 動態渲染 3 組深度對比 -->
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 作業口頭解釋重點提示（給自己的小抄 - 可展開/收合） -->
+    <!-- ===================================================================== -->
+    <section id="cheat-sheet" class="bg-slate-900 text-slate-100 rounded-2xl p-6 sm:p-8 shadow-xs space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <span class="text-xs font-mono uppercase tracking-wider text-volt-500">Oral Defense & Grading Cheat Sheet</span>
+          <h2 class="text-xl sm:text-2xl font-bold text-white mt-1">🎤 作業口頭解釋重點提示（給自己的小抄）</h2>
+        </div>
+        <button
+          type="button"
+          onclick="toggleCheatSheet()"
+          id="cheat-sheet-btn"
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition cursor-pointer self-start sm:self-auto">
+          <span id="cheat-sheet-icon">▾</span>
+          <span id="cheat-sheet-label">收合小抄內容</span>
+        </button>
+      </div>
+
+      <div id="cheat-sheet-body" class="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2 text-sm border-t border-slate-800">
+        <div class="rounded-xl bg-slate-800/80 border border-slate-700 p-4 space-y-2">
+          <h3 class="font-bold text-sky-300">1. 如何解釋「資料庫設計」？</h3>
+          <ul class="space-y-1.5 text-slate-300 leading-relaxed text-xs sm:text-sm">
+            <li>• <strong>為什麼需要 4 張表？</strong>：會員（<code class="text-sky-200">members</code>）與團課（<code class="text-sky-200">classes</code>）是「多對多」關係（一位會員可預約多堂課、一堂課可有多位會員預約），因此透過中介關聯表 <code class="text-sky-200">bookings</code> 拆解為兩個「一對多」，符合資料庫第三正規化（3NF），避免資料重複與更新異常。</li>
+            <li>• <strong>教練與課程分離：</strong>一位教練（<code class="text-sky-200">trainers</code>）可開多堂課，將教練證照與專長獨立存表，修改教練資料時只需改一筆。</li>
+          </ul>
+        </div>
+
+        <div class="rounded-xl bg-slate-800/80 border border-slate-700 p-4 space-y-2">
+          <h3 class="font-bold text-emerald-300">2. 如何解釋「SQL 語法關鍵」？</h3>
+          <ul class="space-y-1.5 text-slate-300 leading-relaxed text-xs sm:text-sm">
+            <li>• <strong>題目 3 滿班率公式：</strong>在 SQLite 中整數相除會無條件捨去小數（例如 <code class="text-emerald-200">4 / 5 = 0</code>），因此必須先乘以 <code class="text-emerald-200">100.0</code> 再除以 <code class="text-emerald-200">max_capacity</code> 並用 <code class="text-emerald-200">ROUND(..., 1)</code> 保留一位小數。</li>
+            <li>• <strong>題目 4 零出席異常會員：</strong>先用 <code class="text-emerald-200">JOIN bookings</code> 確保該會員「至少有預約過」，再用 <code class="text-emerald-200">HAVING SUM(CASE WHEN status = 'Attended' THEN 1 ELSE 0 END) = 0</code> 抓出從未報到的會員。</li>
+          </ul>
+        </div>
+
+        <div class="rounded-xl bg-slate-800/80 border border-slate-700 p-4 space-y-2">
+          <h3 class="font-bold text-amber-300">3. 如何解釋「結果比較差異」？</h3>
+          <ul class="space-y-1.5 text-slate-300 leading-relaxed text-xs sm:text-sm">
+            <li>• <strong>COUNT(*) vs COUNT(欄位)：</strong><code class="text-amber-200">LEFT JOIN</code> 沒配對到時右表會補 <code class="text-amber-200">NULL</code>，但那一列依然存在；<code class="text-amber-200">COUNT(*)</code> 算列數會變 1，<code class="text-amber-200">COUNT(b.booking_id)</code> 會忽略 <code class="text-amber-200">NULL</code> 才正確得到 0。</li>
+            <li>• <strong>LEFT JOIN 退化陷阱：</strong>把右表過濾條件（如 <code class="text-amber-200">b.status = 'Attended'</code>）寫在 <code class="text-amber-200">WHERE</code> 會把補 <code class="text-amber-200">NULL</code> 的列篩掉，導致外連接退化成 <code class="text-amber-200">INNER JOIN</code>。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-slate-200 bg-white mt-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+      <p>健身房會員與團課預約管理系統（FitPulse Gym SQL Lab）· 資料庫課程實作專題網頁</p>
+      <p>使用 sql.js (SQLite WebAssembly) 驅動 · 可直接部署至 GitHub Pages</p>
+    </div>
+  </footer>
+
+  <script>
+    // =========================================================================
+    // 1. 資料庫建表與初始樣本資料（4 張關聯資料表）
+    // =========================================================================
+    const SEED_SQL = `
+      PRAGMA foreign_keys = OFF;
+      DROP TABLE IF EXISTS bookings;
+      DROP TABLE IF EXISTS classes;
+      DROP TABLE IF EXISTS trainers;
+      DROP TABLE IF EXISTS members;
+      PRAGMA foreign_keys = ON;
+
+      CREATE TABLE members (
+        member_id INTEGER PRIMARY KEY,
+        full_name TEXT NOT NULL,
+        gender TEXT NOT NULL,
+        membership_type TEXT NOT NULL,
+        join_date TEXT NOT NULL,
+        status TEXT NOT NULL
+      );
+
+      CREATE TABLE trainers (
+        trainer_id INTEGER PRIMARY KEY,
+        trainer_name TEXT NOT NULL,
+        specialty TEXT NOT NULL,
+        certification TEXT NOT NULL,
+        hire_date TEXT NOT NULL
+      );
+
+      CREATE TABLE classes (
+        class_id INTEGER PRIMARY KEY,
+        trainer_id INTEGER NOT NULL,
+        class_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        schedule_time TEXT NOT NULL,
+        max_capacity INTEGER NOT NULL,
+        FOREIGN KEY (trainer_id) REFERENCES trainers(trainer_id)
+      );
+
+      CREATE TABLE bookings (
+        booking_id INTEGER PRIMARY KEY,
+        member_id INTEGER NOT NULL,
+        class_id INTEGER NOT NULL,
+        booking_date TEXT NOT NULL,
+        status TEXT NOT NULL,
+        FOREIGN KEY (member_id) REFERENCES members(member_id),
+        FOREIGN KEY (class_id) REFERENCES classes(class_id)
+      );
+
+      -- 會員資料（包含 Active 年費、季費、單次票與 Expired 過期會員）
+      INSERT INTO members (member_id, full_name, gender, membership_type, join_date, status) VALUES
+        (1, '林宇軒', 'M', 'Annual', '2025-01-15', 'Active'),
+        (2, '陳思妤', 'F', 'Annual', '2025-03-22', 'Active'),
+        (3, '張家豪', 'M', 'Quarterly', '2026-08-10', 'Active'),
+        (4, '王品妍', 'F', 'Annual', '2025-06-05', 'Active'),
+        (5, '黃冠宇', 'M', 'Annual', '2024-11-01', 'Expired'),
+        (6, '李佳穎', 'F', 'DropIn', '2026-09-18', 'Active'),
+        (7, '周柏翰', 'M', 'Annual', '2026-02-14', 'Active'),
+        (8, '吳欣怡', 'F', 'Quarterly', '2026-07-30', 'Active');
+
+      -- 教練資料（4 位不同專長教練，其中 104 號陳教練開設了尚無預約的新課程）
+      INSERT INTO trainers (trainer_id, trainer_name, specialty, certification, hire_date) VALUES
+        (101, '趙子龍 (Alex)', '燃脂飛輪', 'Schwinn Cycling', '2023-04-01'),
+        (102, '蘇菲亞 (Sophia)', '流動瑜珈', 'RYT-200 國際瑜珈', '2023-09-15'),
+        (103, '馬克思 (Marcus)', 'HIIT 高強度間歇', 'ACE-CPT 私人教練', '2024-02-20'),
+        (104, '許芮涵 (Hannah)', '核心皮拉提斯', 'STOTT Pilates', '2026-10-01');
+
+      -- 團體課程資料（5 堂課，其中 class_id 205 尚無人預約，可用於測試 LEFT JOIN）
+      INSERT INTO classes (class_id, trainer_id, class_name, category, schedule_time, max_capacity) VALUES
+        (201, 101, '極限電音飛輪', 'Cycling', '週一 19:00', 5),
+        (202, 102, '晨光伸展流動瑜珈', 'Yoga', '週三 10:00', 8),
+        (203, 103, '爆汗燃脂 HIIT 特訓', 'HIIT', '週四 20:00', 4),
+        (204, 101, '耐力爬坡飛輪挑戰', 'Cycling', '週六 14:00', 6),
+        (205, 104, '深層核心床皮拉提斯', 'Pilates', '週日 11:00', 6);
+
+      -- 預約紀錄（14 筆：含 Attended 實際出席、No-Show 無故缺席、Cancelled 事先取消）
+      -- 設計亮點：
+      -- 1) 課程 201（上限5人）：5筆預約中 4 筆 Attended（滿班率 80.0%），1 筆 No-Show（若未過濾會誤算成 100%）
+      -- 2) 課程 203（上限4人）：4筆預約中 3 筆 Attended（滿班率 75.0%），1 筆 Cancelled（未過濾會誤算成 100%）
+      -- 3) 課程 202（上限8人）：3筆預約中 2 筆 Attended（滿班率 25.0%），1 筆 No-Show
+      -- 4) 課程 204（上限6人）：2筆預約皆為 No-Show / Cancelled（實際出席 0 人，滿班率 0.0%）
+      -- 5) 課程 205（上限6人）：0 筆預約（測試 LEFT JOIN）
+      -- 6) 會員 7（周柏翰）與會員 8（吳欣怡）：有預約紀錄但從未 Attended（全數 No-Show 或 Cancelled）
+      INSERT INTO bookings (booking_id, member_id, class_id, booking_date, status) VALUES
+        (5001, 1, 201, '2026-11-01', 'Attended'),
+        (5002, 2, 201, '2026-11-01', 'Attended'),
+        (5003, 4, 201, '2026-11-02', 'Attended'),
+        (5004, 6, 201, '2026-11-02', 'Attended'),
+        (5005, 7, 201, '2026-11-03', 'No-Show'),
+        (5006, 2, 202, '2026-11-04', 'Attended'),
+        (5007, 3, 202, '2026-11-04', 'Attended'),
+        (5008, 8, 202, '2026-11-05', 'No-Show'),
+        (5009, 1, 203, '2026-11-06', 'Attended'),
+        (5010, 3, 203, '2026-11-06', 'Attended'),
+        (5011, 4, 203, '2026-11-07', 'Attended'),
+        (5012, 7, 203, '2026-11-07', 'Cancelled'),
+        (5013, 8, 204, '2026-11-08', 'No-Show'),
+        (5014, 5, 204, '2026-11-08', 'Cancelled');
+    `;
+
+    // =========================================================================
+    // 2. 四道精選查詢題目定義
+    // =========================================================================
+    const QUESTIONS = [
+      {
+        id: '題目 1',
+        tag: '基礎篩選與排序',
+        title: '活躍（Active）年費會員資歷清單',
+        desc: '查詢目前會籍狀態為「Active」且會籍方案為「Annual（年費）」的會員編號、姓名、性別、入會日期，並依入會日期（join_date）由早到晚排序。',
+        expectedNote: '共回傳 4 位活躍年費會員（林宇軒、陳思妤、王品妍、周柏翰），已過期的黃冠宇（Expired）及非年費會員會被排除。',
+        hint: '提示：在 WHERE 子句使用 AND 同時過濾 status = \'Active\' 與 membership_type = \'Annual\'，搭配 ORDER BY join_date ASC。',
+        sql: `SELECT
+  member_id,
+  full_name,
+  gender,
+  membership_type,
+  join_date,
+  status
+FROM members
+WHERE status = 'Active'
+  AND membership_type = 'Annual'
+ORDER BY join_date ASC;`
+      },
+      {
+        id: '題目 2',
+        tag: '多表關聯與聚合',
+        title: '每位教練開課數與總預約人次統計',
+        desc: '統計每位教練開設的團體課程總數（class_count）與累計總預約人次（total_bookings），必須包含「已開課但尚未有任何預約紀錄」的課程與教練。',
+        expectedNote: '共回傳 4 位教練；其中許芮涵 (Hannah) 開設 1 堂新課但尚無預約，total_bookings 應正確顯示為 0。',
+        hint: '提示：從 trainers 出發依序 LEFT JOIN classes 與 bookings，並使用 COUNT(DISTINCT c.class_id) 與 COUNT(b.booking_id)。',
+        sql: `SELECT
+  t.trainer_id,
+  t.trainer_name,
+  t.specialty,
+  COUNT(DISTINCT c.class_id) AS class_count,
+  COUNT(b.booking_id) AS total_bookings
+FROM trainers t
+LEFT JOIN classes c ON t.trainer_id = c.trainer_id
+LEFT JOIN bookings b ON c.class_id = b.class_id
+GROUP BY t.trainer_id, t.trainer_name, t.specialty
+ORDER BY total_bookings DESC, t.trainer_id ASC;`
+      },
+      {
+        id: '題目 3',
+        tag: '滿班率與 HAVING 過濾',
+        title: '篩選實際滿班率 >= 70% 的熱門團課',
+        desc: '計算每堂團體課程的「實際出席人數（status = \'Attended\'）」與「滿班率（%）」= 實際出席人數 ÷ max_capacity × 100，並篩選出滿班率 >= 70% 的熱門課程。',
+        expectedNote: '僅回傳 2 堂熱門課程：極限電音飛輪（4/5 = 80.0%）與爆汗燃脂 HIIT 特訓（3/4 = 75.0%）。',
+        hint: '提示：將 b.status = \'Attended\' 放入 LEFT JOIN 的 ON 條件中，用 ROUND(COUNT(b.booking_id) * 100.0 / c.max_capacity, 1) 計算滿班率，並用 HAVING 過濾 >= 70。',
+        sql: `SELECT
+  c.class_id,
+  c.class_name,
+  c.category,
+  c.schedule_time,
+  c.max_capacity,
+  COUNT(b.booking_id) AS attended_count,
+  ROUND(COUNT(b.booking_id) * 100.0 / c.max_capacity, 1) AS fill_rate_pct
+FROM classes c
+LEFT JOIN bookings b
+  ON c.class_id = b.class_id
+  AND b.status = 'Attended'
+GROUP BY c.class_id, c.class_name, c.category, c.schedule_time, c.max_capacity
+HAVING (COUNT(b.booking_id) * 100.0 / c.max_capacity) >= 70
+ORDER BY fill_rate_pct DESC;`
+      },
+      {
+        id: '題目 4',
+        tag: '缺席名單與反向查詢',
+        title: '有預約卻「從未實際出席」的異常會員',
+        desc: '找出「至少有過 1 筆預約紀錄，但從未實際出席（Attended 次數為 0，全數為 No-Show 或 Cancelled）」的會員名單，供櫃檯行政人員發送提醒通知。',
+        expectedNote: '共回傳 3 位異常會員：黃冠宇（1次取消）、周柏翰（1次缺席+1次取消）、吳欣怡（2次無故缺席），實際出席次數皆為 0。',
+        hint: '提示：透過 JOIN bookings 篩出曾預約過的會員，再以 HAVING SUM(CASE WHEN b.status = \'Attended\' THEN 1 ELSE 0 END) = 0 過濾零出席者。',
+        sql: `SELECT
+  m.member_id,
+  m.full_name,
+  m.membership_type,
+  m.status AS member_status,
+  COUNT(b.booking_id) AS total_bookings,
+  SUM(CASE WHEN b.status = 'Attended' THEN 1 ELSE 0 END) AS attended_count,
+  SUM(CASE WHEN b.status = 'No-Show' THEN 1 ELSE 0 END) AS noshow_count,
+  SUM(CASE WHEN b.status = 'Cancelled' THEN 1 ELSE 0 END) AS cancelled_count
+FROM members m
+JOIN bookings b ON m.member_id = b.member_id
+GROUP BY m.member_id, m.full_name, m.membership_type, m.status
+HAVING SUM(CASE WHEN b.status = 'Attended' THEN 1 ELSE 0 END) = 0
+ORDER BY noshow_count DESC, total_bookings DESC;`
+      }
+    ];
+
+    // =========================================================================
+    // 3. 三組深度結果比較定義（Before vs After SQL Modification）
+    // =========================================================================
+    const COMPARISON_CASES = [
+      {
+        id: 'Comp1',
+        badge: '比較一 · COUNT(*) vs COUNT(b.booking_id) 搭配 LEFT JOIN',
+        title: '統計每位教練的團課總預約人次（包含尚無預約的新課程）',
+        beforeLabel: '修改前：使用 COUNT(*) 計算預約筆數（誤把無預約課程算成 1 筆）',
+        beforeSql: `SELECT
+  t.trainer_id,
+  t.trainer_name,
+  COUNT(DISTINCT c.class_id) AS class_count,
+  COUNT(*) AS wrong_booking_count
+FROM trainers t
+LEFT JOIN classes c ON t.trainer_id = c.trainer_id
+LEFT JOIN bookings b ON c.class_id = b.class_id
+GROUP BY t.trainer_id, t.trainer_name
+ORDER BY t.trainer_id;`,
+        afterLabel: '修改後：使用 COUNT(b.booking_id) 計算預約筆數（正確顯示 0 筆）',
+        afterSql: `SELECT
+  t.trainer_id,
+  t.trainer_name,
+  COUNT(DISTINCT c.class_id) AS class_count,
+  COUNT(b.booking_id) AS exact_booking_count
+FROM trainers t
+LEFT JOIN classes c ON t.trainer_id = c.trainer_id
+LEFT JOIN bookings b ON c.class_id = b.class_id
+GROUP BY t.trainer_id, t.trainer_name
+ORDER BY t.trainer_id;`,
+        diffSummary: '觀察 104 號教練「許芮涵 (Hannah)」：修改前 wrong_booking_count 錯誤顯示為 1 筆；修改後 exact_booking_count 正確顯示為 0 筆，其餘三位有預約紀錄的教練數據則維持不變。',
+        whyReason: '當使用 LEFT JOIN 串接 bookings 時，許芮涵教練的 205 號課程雖然沒有任何預約，但 LEFT JOIN 仍會保留該課程並將右表欄位填為 NULL，產生「1 列」資料。COUNT(*) 計算的是「資料列總數」（包含 NULL 列），因此會算出 1；而 COUNT(b.booking_id) 只計算「非 NULL 欄位值」的數量，才會正確忽略 NULL 並得出 0。'
+      },
+      {
+        id: 'Comp2',
+        badge: '比較二 · LEFT JOIN 條件放 WHERE vs 放 ON（外連接退化陷阱）',
+        title: '列出「所有」團體課程的實際出席人數（含 0 人出席的課程）',
+        beforeLabel: '修改前：將 b.status = \'Attended\' 寫在 WHERE（導致 LEFT JOIN 退化成 INNER JOIN）',
+        beforeSql: `SELECT
+  c.class_id,
+  c.class_name,
+  c.max_capacity,
+  COUNT(b.booking_id) AS attended_count
+FROM classes c
+LEFT JOIN bookings b ON c.class_id = b.class_id
+WHERE b.status = 'Attended'
+GROUP BY c.class_id, c.class_name, c.max_capacity
+ORDER BY c.class_id;`,
+        afterLabel: '修改後：將 b.status = \'Attended\' 移入 ON 條件，並用 HAVING 過濾聚合結果',
+        afterSql: `SELECT
+  c.class_id,
+  c.class_name,
+  c.max_capacity,
+  COUNT(b.booking_id) AS attended_count
+FROM classes c
+LEFT JOIN bookings b
+  ON c.class_id = b.class_id
+  AND b.status = 'Attended'
+GROUP BY c.class_id, c.class_name, c.max_capacity
+HAVING COUNT(b.booking_id) >= 0
+ORDER BY c.class_id;`,
+        diffSummary: '修改前只回傳 3 堂課，204 號（0 人出席）與 205 號（無人預約）整列消失；修改後完整保留全部 5 堂課，204 與 205 號課程正確顯示 attended_count = 0（若想再過濾「至少 1 人出席」則在 HAVING 設定條件）。',
+        whyReason: 'SQL 執行順序是「先執行 FROM / JOIN，再執行 WHERE，最後才執行 GROUP BY / HAVING」。把右表條件 b.status = \'Attended\' 寫在 WHERE，會把 LEFT JOIN 補上 NULL 的課程列直接過濾掉（因為 NULL = \'Attended\' 為 Unknown），使 LEFT JOIN 實質退化成 INNER JOIN；將條件寫在 ON 則是在連接階段先篩選右表，左表所有課程都會安全保留。'
+      },
+      {
+        id: 'Comp3',
+        badge: '比較三 · 計算滿班率時過濾 status = \'Attended\' vs 未過濾狀態',
+        title: '評估各堂團體課程的真實教室使用率（滿班率 %）',
+        beforeLabel: '修改前：未過濾預約狀態（把 No-Show 缺席與 Cancelled 取消也算進滿班率）',
+        beforeSql: `SELECT
+  c.class_id,
+  c.class_name,
+  c.max_capacity,
+  COUNT(b.booking_id) AS raw_bookings,
+  ROUND(COUNT(b.booking_id) * 100.0 / c.max_capacity, 1) AS inflated_fill_rate
+FROM classes c
+LEFT JOIN bookings b ON c.class_id = b.class_id
+GROUP BY c.class_id, c.class_name, c.max_capacity
+ORDER BY c.class_id;`,
+        afterLabel: '修改後：僅計入 status = \'Attended\' 實際報到人數（真實滿班率）',
+        afterSql: `SELECT
+  c.class_id,
+  c.class_name,
+  c.max_capacity,
+  COUNT(b.booking_id) AS actual_attended,
+  ROUND(COUNT(b.booking_id) * 100.0 / c.max_capacity, 1) AS real_fill_rate
+FROM classes c
+LEFT JOIN bookings b
+  ON c.class_id = b.class_id
+  AND b.status = 'Attended'
+GROUP BY c.class_id, c.class_name, c.max_capacity
+ORDER BY c.class_id;`,
+        diffSummary: '修改前 201 號飛輪與 203 號 HIIT 看似「100.0% 爆滿」，連無人到場的 204 號課程也有 33.3% 滿班率；修改後揭露真實出席率分別為 80.0%、75.0%，而 204 號課程實際出席率為 0.0%（2 筆預約全數缺席/取消）。',
+        whyReason: '在團課預約業務邏輯中，bookings 同時記錄了三種生命週期狀態（Attended、No-Show、Cancelled）。未過濾狀態計算的是「名額占用率/預約熱度」，而非「實際教室使用率」，容易讓營運主管誤判冷門時段有實際人流。'
+      }
+    ];
+
+    // =========================================================================
+    // 4. 全域狀態與 SQLite WebAssembly 初始化（含 Fallback 備援機制）
+    // =========================================================================
+    let SQL_LIB = null;
+    let db = null;
+    let currentQuestionIndex = 0;
+    let currentSampleTable = 'members';
+
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('system-toast');
+      const msgEl = document.getElementById('system-toast-msg');
+      toast.classList.remove(
+        'hidden',
+        'bg-emerald-50', 'border-emerald-300', 'text-emerald-900',
+        'bg-rose-50', 'border-rose-300', 'text-rose-900',
+        'bg-blue-50', 'border-blue-300', 'text-blue-900'
+      );
+
+      if (type === 'success') {
+        toast.classList.add('bg-emerald-50', 'border-emerald-300', 'text-emerald-900');
+      } else if (type === 'error') {
+        toast.classList.add('bg-rose-50', 'border-rose-300', 'text-rose-900');
+      } else {
+        toast.classList.add('bg-blue-50', 'border-blue-300', 'text-blue-900');
+      }
+      msgEl.textContent = message;
+    }
+
+    function hideToast() {
+      document.getElementById('system-toast').classList.add('hidden');
+    }
+
+    function updateStatusBadge(mode, textLabel) {
+      const badge = document.getElementById('db-status-badge');
+      const dot = document.getElementById('db-status-dot');
+      const text = document.getElementById('db-status-text');
+
+      badge.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border';
+      dot.className = 'w-2 h-2 rounded-full';
+
+      if (mode === 'ready') {
+        badge.classList.add('bg-emerald-50', 'text-emerald-800', 'border-emerald-200');
+        dot.classList.add('bg-emerald-500');
+        text.textContent = textLabel || 'SQLite 引擎已就緒（sql.js 1.10.3）';
+      } else if (mode === 'error') {
+        badge.classList.add('bg-rose-50', 'text-rose-800', 'border-rose-200');
+        dot.classList.add('bg-rose-500');
+        text.textContent = textLabel || 'SQLite 引擎載入失敗，請檢查網路連線';
+      } else {
+        badge.classList.add('bg-amber-50', 'text-amber-800', 'border-amber-200');
+        dot.classList.add('bg-amber-500', 'animate-pulse');
+        text.textContent = textLabel || '正在載入 SQLite WebAssembly 引擎...';
+      }
+    }
+
+    async function initDatabaseEngine() {
+      updateStatusBadge('loading', '正在載入 SQLite WebAssembly 引擎...');
+      try {
+        if (typeof initSqlJs !== 'function') {
+          throw new Error('找不到 initSqlJs 函式，請確認 CDN 腳本是否正確載入。');
+        }
+        SQL_LIB = await initSqlJs({
+          locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+        });
+        db = new SQL_LIB.Database();
+        db.exec(SEED_SQL);
+        updateStatusBadge('ready', 'SQLite 引擎已就緒（sql.js 1.10.3）');
+
+        renderQuestionSelector();
+        selectQuestion(0);
+        renderSampleTable(currentSampleTable);
+        renderComparisonCases();
+      } catch (err) {
+        console.error('SQLite 初始化失敗:', err);
+        updateStatusBadge('error', 'SQLite 引擎載入失敗');
+        showToast('無法初始化 sql.js 資料庫引擎：' + err.message, 'error');
+      }
+    }
+
+    function executeSqlQuery(sqlText) {
+      const trimmed = (sqlText || '').trim();
+      if (!trimmed) {
+        throw new Error('請先在編輯器中輸入 SQL 語法再執行。');
+      }
+      if (!db) {
+        throw new Error('資料庫引擎尚未就緒，請稍候或重新整理頁面。');
+      }
+
+      const startTime = performance.now();
+      const results = db.exec(trimmed);
+      const elapsedMs = (performance.now() - startTime).toFixed(2);
+
+      if (!results || results.length === 0) {
+        return {
+          columns: [],
+          rows: [],
+          elapsedMs,
+          message: 'SQL 語法執行成功（無回傳資料列，或已完成 INSERT / UPDATE / DELETE 資料異動）。'
+        };
+      }
+
+      const lastSet = results[results.length - 1];
+      return {
+        columns: lastSet.columns,
+        rows: lastSet.values,
+        elapsedMs,
+        message: ''
+      };
+    }
+
+    function resetDatabase() {
+      try {
+        if (!SQL_LIB) {
+          throw new Error('SQLite 引擎尚未載入完成。');
+        }
+        if (db) {
+          db.close();
+        }
+        db = new SQL_LIB.Database();
+        db.exec(SEED_SQL);
+        updateStatusBadge('ready', 'SQLite 引擎已就緒（資料庫已重置）');
+
+        renderSampleTable(currentSampleTable);
+        renderExpectedResult(QUESTIONS[currentQuestionIndex].sql);
+        runCurrentSql(true);
+        renderComparisonCases();
+        showToast('資料庫已成功重置為初始狀態（所有資料表與筆數已還原）！', 'success');
+      } catch (err) {
+        showToast('重置資料庫時發生錯誤：' + err.message, 'error');
+      }
+    }
+
+    // =========================================================================
+    // 5. 樣本資料渲染
+    // =========================================================================
+    function switchSampleTable(tableName) {
+      currentSampleTable = tableName;
+      document.querySelectorAll('.sample-tab').forEach((btn) => {
+        const active = btn.dataset.table === tableName;
+        btn.className = active
+          ? 'sample-tab px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-pulse-600 text-white shadow-2xs transition cursor-pointer'
+          : 'sample-tab px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer';
+      });
+      renderSampleTable(tableName);
+    }
+
+    function renderSampleTable(tableName) {
+      const container = document.getElementById('sample-data-container');
+      try {
+        const res = executeSqlQuery(`SELECT * FROM ${tableName};`);
+        container.innerHTML = buildResultTableHtml(res.columns, res.rows);
+      } catch (err) {
+        container.innerHTML = `<div class="p-4 text-xs text-rose-700">無法讀取資料表 ${escapeHtml(tableName)}：${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    // =========================================================================
+    // 6. 查詢操作區邏輯（4 題切換、執行、計時、比對）
+    // =========================================================================
+    function renderQuestionSelector() {
+      const box = document.getElementById('question-selector');
+      box.innerHTML = QUESTIONS.map((q, idx) => `
+        <button
+          type="button"
+          id="q-btn-${idx}"
+          onclick="selectQuestion(${idx})"
+          class="text-left p-3.5 rounded-xl border transition cursor-pointer flex flex-col justify-between gap-1.5 ${
+            idx === currentQuestionIndex
+              ? 'bg-pulse-50 border-pulse-500 ring-2 ring-pulse-200'
+              : 'bg-white border-slate-200 hover:border-pulse-300 hover:bg-slate-50'
+          }">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-xs font-bold px-2 py-0.5 rounded bg-pulse-600 text-white">${escapeHtml(q.id)}</span>
+            <span class="text-[11px] font-medium text-slate-500">${escapeHtml(q.tag)}</span>
+          </div>
+          <div class="text-sm font-bold text-slate-900 line-clamp-2">${escapeHtml(q.title)}</div>
+        </button>
+      `).join('');
+    }
+
+    function selectQuestion(index) {
+      currentQuestionIndex = index;
+      const q = QUESTIONS[index];
+
+      QUESTIONS.forEach((_, idx) => {
+        const btn = document.getElementById(`q-btn-${idx}`);
+        if (!btn) return;
+        btn.className = idx === index
+          ? 'text-left p-3.5 rounded-xl border transition cursor-pointer flex flex-col justify-between gap-1.5 bg-pulse-50 border-pulse-500 ring-2 ring-pulse-200'
+          : 'text-left p-3.5 rounded-xl border transition cursor-pointer flex flex-col justify-between gap-1.5 bg-white border-slate-200 hover:border-pulse-300 hover:bg-slate-50';
+      });
+
+      document.getElementById('q-badge').textContent = q.id;
+      document.getElementById('q-tag').textContent = q.tag;
+      document.getElementById('q-title').textContent = q.title;
+      document.getElementById('q-desc').textContent = q.desc;
+      document.getElementById('q-expected-note').textContent = q.expectedNote;
+      document.getElementById('q-hint').textContent = q.hint;
+      document.getElementById('sql-editor').value = q.sql;
+
+      hideErrorBox();
+      renderExpectedResult(q.sql);
+      runCurrentSql(true);
+    }
+
+    function loadReferenceSql() {
+      const q = QUESTIONS[currentQuestionIndex];
+      document.getElementById('sql-editor').value = q.sql;
+      runCurrentSql();
+      showToast(`已載入「${q.id}：${q.title}」的預設正確 SQL 並執行！`, 'info');
+    }
+
+    function clearSqlEditor() {
+      document.getElementById('sql-editor').value = '';
+      hideErrorBox();
+      document.getElementById('exec-time-badge').textContent = '0.0 ms';
+      document.getElementById('actual-row-count').textContent = '0 rows';
+      document.getElementById('actual-result-container').innerHTML = '<p class="text-slate-400 text-xs">編輯器已清空，請輸入 SQL 後點擊「執行 SQL」。</p>';
+      setMatchBadge('neutral', '已清空編輯器');
+    }
+
+    function hideErrorBox() {
+      document.getElementById('sql-error-box').classList.add('hidden');
+      document.getElementById('sql-error-text').textContent = '';
+    }
+
+    function showErrorBox(errMsg) {
+      document.getElementById('sql-error-box').classList.remove('hidden');
+      document.getElementById('sql-error-text').textContent = errMsg;
+    }
+
+    function setMatchBadge(status, label) {
+      const badge = document.getElementById('query-match-badge');
+      badge.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border self-start md:self-auto';
+      if (status === 'match') {
+        badge.classList.add('bg-emerald-50', 'text-emerald-800', 'border-emerald-300');
+        badge.innerHTML = `<span>🎯</span><span>${escapeHtml(label)}</span>`;
+      } else if (status === 'error') {
+        badge.classList.add('bg-rose-50', 'text-rose-800', 'border-rose-300');
+        badge.innerHTML = `<span>❌</span><span>${escapeHtml(label)}</span>`;
+      } else if (status === 'diff') {
+        badge.classList.add('bg-amber-50', 'text-amber-800', 'border-amber-300');
+        badge.innerHTML = `<span>🔍</span><span>${escapeHtml(label)}</span>`;
+      } else {
+        badge.classList.add('bg-slate-100', 'text-slate-700', 'border-slate-200');
+        badge.innerHTML = `<span>•</span><span>${escapeHtml(label)}</span>`;
+      }
+    }
+
+    function renderExpectedResult(refSql) {
+      const container = document.getElementById('expected-result-container');
+      const countEl = document.getElementById('expected-row-count');
+      try {
+        const res = executeSqlQuery(refSql);
+        countEl.textContent = `${res.rows.length} rows`;
+        container.innerHTML = buildResultTableHtml(res.columns, res.rows);
+        container.dataset.expectedJson = JSON.stringify({ columns: res.columns, rows: res.rows });
+      } catch (err) {
+        countEl.textContent = '0 rows';
+        container.innerHTML = `<p class="text-xs text-rose-700">預期結果載入失敗：${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    function runCurrentSql(silent = false) {
+      const sqlText = document.getElementById('sql-editor').value;
+      const actualContainer = document.getElementById('actual-result-container');
+      const actualCountEl = document.getElementById('actual-row-count');
+      const execTimeEl = document.getElementById('exec-time-badge');
+
+      hideErrorBox();
+
+      try {
+        const res = executeSqlQuery(sqlText);
+        execTimeEl.textContent = `${res.elapsedMs} ms`;
+        actualCountEl.textContent = `${res.rows.length} rows`;
+
+        if (res.columns.length === 0) {
+          actualContainer.innerHTML = `<div class="rounded-lg bg-pulse-50 border border-pulse-200 p-3 text-xs text-pulse-900 font-medium">${escapeHtml(res.message)}</div>`;
+          renderSampleTable(currentSampleTable);
+          renderExpectedResult(QUESTIONS[currentQuestionIndex].sql);
+          setMatchBadge('neutral', '資料異動已完成（可按 Reset DB 還原）');
+          return;
+        }
+
+        actualContainer.innerHTML = buildResultTableHtml(res.columns, res.rows);
+
+        // 比對實際結果與預期結果
+        const expectedRaw = document.getElementById('expected-result-container').dataset.expectedJson;
+        if (expectedRaw) {
+          const expected = JSON.parse(expectedRaw);
+          const sameCols = JSON.stringify(expected.columns) === JSON.stringify(res.columns);
+          const sameRows = JSON.stringify(expected.rows) === JSON.stringify(res.rows);
+          if (sameCols && sameRows) {
+            setMatchBadge('match', '實際結果與預期完全一致');
+          } else if (sameRows) {
+            setMatchBadge('diff', '資料列相同，但欄位別名或順序不同');
+          } else {
+            setMatchBadge('diff', '查詢結果與此題預期輸出不同（可觀察差異）');
+          }
+        }
+      } catch (err) {
+        execTimeEl.textContent = 'ERR';
+        actualCountEl.textContent = '0 rows';
+        actualContainer.innerHTML = '<p class="text-xs text-rose-600">因 SQL 語法或欄位錯誤，無法產生查詢表格。</p>';
+        showErrorBox(err.message || String(err));
+        setMatchBadge('error', 'SQL 執行發生錯誤');
+        if (!silent) {
+          showToast('SQL 執行發生錯誤，請檢視下方錯誤訊息提示。', 'error');
+        }
+      }
+    }
+
+    // =========================================================================
+    // 7. 結果比較區塊渲染與一鍵載入至上方執行區測試
+    // =========================================================================
+    function renderComparisonCases() {
+      const container = document.getElementById('comparison-cases-container');
+      container.innerHTML = COMPARISON_CASES.map((c, idx) => {
+        let beforePreviewHtml = '';
+        let afterPreviewHtml = '';
+
+        try {
+          const bRes = executeSqlQuery(c.beforeSql);
+          beforePreviewHtml = buildResultTableHtml(bRes.columns, bRes.rows);
+        } catch (e) {
+          beforePreviewHtml = `<div class="text-xs font-mono text-rose-700 bg-rose-50 p-3 rounded-lg border border-rose-200">${escapeHtml(e.message)}</div>`;
+        }
+
+        try {
+          const aRes = executeSqlQuery(c.afterSql);
+          afterPreviewHtml = buildResultTableHtml(aRes.columns, aRes.rows);
+        } catch (e) {
+          afterPreviewHtml = `<div class="text-xs font-mono text-rose-700 bg-rose-50 p-3 rounded-lg border border-rose-200">${escapeHtml(e.message)}</div>`;
+        }
+
+        return `
+          <article class="rounded-2xl border border-slate-200 bg-slate-50/50 p-5 sm:p-6 space-y-5">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+              <div>
+                <span class="inline-block text-xs font-bold px-2.5 py-0.5 rounded-full bg-volt-100 text-volt-600 mb-1.5">${escapeHtml(c.badge)}</span>
+                <h3 class="text-lg font-bold text-slate-900">${escapeHtml(c.title)}</h3>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onclick="loadComparisonToPlayground(${idx}, 'before')"
+                  class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 transition cursor-pointer">
+                  🧪 載入「修改前」到上方測試
+                </button>
+                <button
+                  type="button"
+                  onclick="loadComparisonToPlayground(${idx}, 'after')"
+                  class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-pulse-600 hover:bg-pulse-700 text-white shadow-2xs transition cursor-pointer">
+                  🚀 一鍵載入到上方執行區測試（修改後）
+                </button>
+              </div>
+            </div>
+
+            <!-- 修改前 vs 修改後 並排對照 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div class="rounded-xl bg-white border border-rose-200/80 p-4 space-y-3">
+                <div class="text-xs font-bold text-rose-700">${escapeHtml(c.beforeLabel)}</div>
+                <pre class="bg-slate-900 text-rose-100 rounded-lg p-3 text-xs overflow-x-auto">${escapeHtml(c.beforeSql)}</pre>
+                <div class="text-xs font-semibold text-slate-500">修改前輸出結果：</div>
+                <div class="overflow-x-auto">${beforePreviewHtml}</div>
+              </div>
+
+              <div class="rounded-xl bg-white border border-pulse-200 p-4 space-y-3">
+                <div class="text-xs font-bold text-pulse-700">${escapeHtml(c.afterLabel)}</div>
+                <pre class="bg-slate-900 text-emerald-200 rounded-lg p-3 text-xs overflow-x-auto">${escapeHtml(c.afterSql)}</pre>
+                <div class="text-xs font-semibold text-slate-500">修改後輸出結果：</div>
+                <div class="overflow-x-auto">${afterPreviewHtml}</div>
+              </div>
+            </div>
+
+            <!-- 結果改變說明與技術原因 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded-xl bg-amber-50/80 border border-amber-200 p-4">
+                <div class="font-bold text-amber-900 mb-1">📌 結果如何改變？（What Changed）</div>
+                <p class="text-slate-700 leading-relaxed">${escapeHtml(c.diffSummary)}</p>
+              </div>
+              <div class="rounded-xl bg-pulse-50/80 border border-pulse-200 p-4">
+                <div class="font-bold text-pulse-900 mb-1">🧠 技術原因解析（Why It Happens）</div>
+                <p class="text-slate-700 leading-relaxed">${escapeHtml(c.whyReason)}</p>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    function loadComparisonToPlayground(caseIndex, version) {
+      const target = COMPARISON_CASES[caseIndex];
+      if (!target) return;
+      const sqlToLoad = version === 'before' ? target.beforeSql : target.afterSql;
+      document.getElementById('sql-editor').value = sqlToLoad;
+      document.getElementById('playground').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      runCurrentSql();
+      showToast(`已載入「${target.badge}（${version === 'before' ? '修改前' : '修改後'}）」至上方執行區並完成運算！`, 'info');
+    }
+
+    // =========================================================================
+    // 8. 小抄展開收合與共用渲染工具
+    // =========================================================================
+    function toggleCheatSheet() {
+      const body = document.getElementById('cheat-sheet-body');
+      const icon = document.getElementById('cheat-sheet-icon');
+      const label = document.getElementById('cheat-sheet-label');
+      const isHidden = body.classList.toggle('hidden');
+      icon.textContent = isHidden ? '▸' : '▾';
+      label.textContent = isHidden ? '展開小抄內容' : '收合小抄內容';
+    }
+
+    function buildResultTableHtml(columns, rows) {
+      if (!columns || columns.length === 0) {
+        return '<p class="text-xs text-slate-500">無欄位資訊。</p>';
+      }
+      const thead = `
+        <thead class="bg-slate-100 text-slate-700 text-xs">
+          <tr>
+            ${columns.map((c) => `<th class="px-3 py-2 font-mono font-bold text-left whitespace-nowrap border-b border-slate-200">${escapeHtml(c)}</th>`).join('')}
+          </tr>
+        </thead>
+      `;
+      const tbody = rows.length === 0
+        ? `<tbody><tr><td colspan="${columns.length}" class="px-3 py-4 text-center text-xs text-slate-400">查無符合條件的資料列（0 rows）</td></tr></tbody>`
+        : `<tbody class="divide-y divide-slate-100 text-xs sm:text-sm text-slate-700">
+            ${rows.map((r) => `
+              <tr class="hover:bg-slate-50/80">
+                ${r.map((cell) => {
+                  const isNull = cell === null || cell === undefined;
+                  const displayVal = isNull ? 'NULL' : String(cell);
+                  const cls = isNull
+                    ? 'px-3 py-2 font-mono text-xs italic text-slate-400 bg-slate-50/60'
+                    : 'px-3 py-2 font-mono text-xs whitespace-nowrap';
+                  return `<td class="${cls}">${escapeHtml(displayVal)}</td>`;
+                }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>`;
+
+      return `<table class="min-w-full border-collapse">${thead}${tbody}</table>`;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const editor = document.getElementById('sql-editor');
+      editor.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          runCurrentSql();
+        }
+      });
+      initDatabaseEngine();
+    });
+  </script>
+</body>
+</html>
